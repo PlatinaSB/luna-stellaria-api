@@ -61,6 +61,20 @@ export function errorHandler(
 		return;
 	}
 
+	// `express.json()` rejects malformed bodies with a tagged SyntaxError.
+	if (error instanceof SyntaxError && (error as { type?: string }).type === 'entity.parse.failed') {
+		const body: ApiFailure = {
+			success: false,
+			error: {
+				code: 'INVALID_JSON',
+				message: 'Request body must be valid JSON.'
+			}
+		};
+
+		res.status(400).json(body);
+		return;
+	}
+
 	console.error(`[error] ${req.method} ${req.originalUrl}`, error);
 
 	const body: ApiFailure = {

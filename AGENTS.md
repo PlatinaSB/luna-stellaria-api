@@ -409,3 +409,21 @@ The following details must be verified against the actual repository rather than
 - Cloudflare account, Worker name, and environment configuration.
 
 Keep this document aligned with the actual implementation as the project evolves.
+
+## This Repository At A Glance
+
+Concrete values for this project (verify against the code when in doubt):
+
+- **Entry point:** `src/index.ts`. Express runs through `cloudflare:node`'s `httpServerHandler({ port })`; the app is created by `createApp()` in `src/app.ts` and bound with `app.listen(3000)`. The port is the routing key between the Workers `node:http` shim and the handler — keep it in sync. This is the established integration; do **not** replace it with a plain Workers `fetch` handler.
+- **Compatibility:** `nodejs_compat` (see `wrangler.jsonc`). Import extensions are `.ts` (`verbatimModuleSyntax`, `erasableSyntaxOnly` are on).
+- **Env access:** always `import { env } from 'cloudflare:workers'` inside handlers/services/models; the binding is `env.lunadb` (D1). Secrets are typed in `src/env.d.ts`.
+- **Layering:** `routes/` → `controllers/` → `services/` → `models/`. Errors use `HttpError` from `src/middleware/error-handler.ts` and are rendered into the `{ success, data | error }` envelope by `errorHandler`.
+- **Routes:** registered in `src/routes/index.ts` (`registerRoutes`). Middleware order is CORS → JSON body (`1mb`) → routes → not-found → error handler.
+- **Endpoints:** `/health`; `/auth/register|login|logout` and `/auth/me`; `/ai/indobert/classify` (auth required). See `README.md` for payloads and the response envelope.
+- **Auth:** 7-day HS256 JWT (`jose`) in an httpOnly `jwt` cookie, scoped to `Domain=.luna-stellaria.com` in production and host-only locally (see `src/utils/cookies.ts`). Scope is decided by `req.secure` (HTTPS), **not** the host — `wrangler dev` rewrites `Host`/`req.hostname` to the custom-domain route even for `localhost`, so a host-based check would wrongly send a `.luna-stellaria.com` cookie that `localhost` browsers reject. Passwords use `bcryptjs` at cost 12. `requireAuth` reads the cookie only.
+- **CORS:** credentialed allowlist in `src/middleware/cors.ts` (`https://luna-stellaria.com`, `https://www.luna-stellaria.com`, plus localhost/127.0.0.1 for dev). Never use `*`.
+- **Secrets:** `JWT_SECRET`, `hf_endpoints`, `hf_endpoints_key` — `.dev.vars` locally (gitignored, template in `.dev.vars.example`), `wrangler secret put` in production.
+- **Database:** D1 `lunadb` (binding `lunadb`), migrations in `migrations/` applied with `npx wrangler d1 migrations apply lunadb --local|--remote`. Never edit an applied migration; add a new numbered file. The `users` table is defined in `0001_create-auth.sql`.
+- **Scripts:** `dev` (`wrangler dev`, port 8787), `typecheck` (`tsc --noEmit`), `build` (`gen` + `typecheck`), `lint` (`prettier --check . && eslint .`), `format`, `gen` (`wrangler types`), `deploy`. Run `npm run gen` after changing `wrangler.jsonc`.
+- **Frontend:** this API serves the separate [`luna-stellaria`](../luna-stellaria) frontend, which calls it cross-origin with `credentials: 'include'`.
+- **No test framework is configured** — validation is `typecheck`, `lint`, and manual `wrangler dev` checks.
