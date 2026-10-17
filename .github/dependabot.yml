@@ -11,8 +11,9 @@ updates:
     schedule:
       interval: 'monthly'
 
+    # One grouped PR per month, non-breaking only
     groups:
-      dependencies:
+      non-breaking:
         applies-to: version-updates
         patterns:
           - '*'
@@ -20,10 +21,16 @@ updates:
           - 'minor'
           - 'patch'
 
-      minor-and-patch:
+      security:
         applies-to: security-updates
         patterns:
           - '*'
         update-types:
-          - 'patch'
           - 'minor'
+          - 'patch'
+
+    # Never propose breaking (major) updates
+    ignore:
+      - dependency-name: '*'
+        update-types:
+          - 'version-update:semver-major'
