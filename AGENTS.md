@@ -14,47 +14,187 @@ This project is a TypeScript-based HTTP API hosted on **Cloudflare Workers**, us
 
 The application runs in Cloudflare's serverless edge environment rather than a traditional Node.js server. All code changes must account for Workers runtime constraints and compatibility requirements.
 
-## Architecture
+## Architecture: MVC (Model–View–Controller)
 
-The expected request flow is:
+This project uses an MVC-inspired architecture with TypeScript and Express.js, deployed on Cloudflare Workers.
+
+The application separates data access, business logic, HTTP request handling, and response formatting to keep the code maintainable and testable.
+
+### Request Flow
 
 ```text
 Client
   |
   v
-https://api.luna-stellaria.com
+Cloudflare Workers
   |
   v
-Cloudflare Network
+Express.js
   |
   v
-Cloudflare Worker
+Routes
   |
   v
-Express.js Application
+Middleware
   |
   v
-Middleware and Route Handlers
+Controllers
   |
   v
-Services / Data Access
+Services (Business Logic)
   |
   v
-API Response
+Models (Data and Persistence)
+  |
+  v
+Controllers
+  |
+  v
+JSON Response
 ```
 
-Keep responsibilities separated wherever practical:
+### MVC Responsibilities
 
-- **Worker entry point:** Integrates the Cloudflare Workers runtime with the application.
-- **Express application:** Configures middleware, routes, and error handling.
-- **Routes:** Define HTTP endpoints and map requests to handlers.
-- **Controllers:** Handle HTTP request and response concerns.
-- **Services:** Contain business logic.
-- **Data access:** Encapsulates database and external service interactions.
-- **Types:** Define shared request, response, and domain types.
-- **Configuration:** Centralizes environment-specific settings and runtime bindings.
+**Models**
 
-Follow the existing repository structure if it differs from this suggested architecture. Do not introduce unnecessary layers or reorganize the project without a clear reason.
+Models represent application data and handle data persistence or database interactions.
+
+- Define data structures and domain types.
+- Encapsulate database queries and persistence operations.
+- Handle data-related operations and domain constraints where appropriate.
+- Avoid depending on Express request and response objects.
+- Keep database-specific implementation details out of controllers.
+
+**Views**
+
+This is a REST API, so views primarily consist of JSON responses rather than server-rendered HTML templates.
+
+- Return consistent JSON response structures.
+- Keep response formatting separate from business logic where practical.
+- Do not introduce a template engine unless explicitly required.
+- Avoid exposing internal model fields or sensitive information in API responses.
+
+**Controllers**
+
+Controllers handle HTTP requests and coordinate application operations.
+
+- Read and validate request parameters, query strings, headers, and request bodies.
+- Call services to execute business logic.
+- Translate service results into HTTP responses.
+- Set appropriate HTTP status codes.
+- Forward errors to centralized Express error-handling middleware.
+- Avoid embedding database queries or complex business logic directly in controllers.
+
+### Services Layer
+
+Although services are not one of the three MVC components, use a service layer to keep controllers thin and business logic reusable.
+
+- Implement application use cases and business rules.
+- Coordinate operations involving multiple models or external services.
+- Avoid coupling business logic directly to Express request and response objects.
+- Keep services independently testable.
+- Return domain results or throw appropriately typed errors according to the project's established conventions.
+
+### Routes
+
+Routes define API endpoints and connect HTTP methods and paths to middleware and controllers.
+
+- Keep route definitions separate from controller implementations.
+- Apply authentication, authorization, and validation middleware where required.
+- Use the existing route registration conventions.
+- Avoid placing business logic directly in route files.
+
+### Suggested Directory Structure
+
+Follow the existing repository structure when one is already established. Otherwise, use the following structure as a reference:
+
+```text
+src/
+├── app.ts                  # Express application configuration
+├── index.ts                # Cloudflare Workers entry point
+├── routes/
+│   ├── index.ts             # Route registration
+│   └── user.routes.ts
+├── controllers/
+│   └── user.controller.ts
+├── services/
+│   └── user.service.ts
+├── models/
+│   └── user.model.ts
+├── middleware/
+│   ├── error-handler.ts
+│   └── not-found.ts
+├── validators/
+│   └── user.validator.ts
+├── types/
+│   └── index.ts
+├── config/
+│   └── index.ts
+└── utils/
+    └── index.ts
+```
+
+These filenames are illustrative. Adapt them to the actual application and database technology. Do not create empty directories or placeholder files without a concrete need.
+
+### Dependency Direction
+
+Maintain the following dependency direction:
+
+```text
+Routes
+  |
+  v
+Controllers
+  |
+  v
+Services
+  |
+  v
+Models / Data Access
+```
+
+Supporting modules such as validators, configuration, shared types, and utilities may be imported where needed.
+
+- Models must not depend on controllers.
+- Services must not depend on Express request or response objects.
+- Controllers must not contain direct database queries when a model or data-access abstraction is available.
+- Routes must not implement business logic.
+- Avoid circular dependencies between layers.
+- Keep Cloudflare-specific runtime integration at the application entry point or dedicated infrastructure boundary.
+
+### Cloudflare Workers Compatibility
+
+MVC components must remain compatible with the Cloudflare Workers runtime.
+
+- Do not start a conventional HTTP server with `app.listen()` unless required by the existing Workers adapter.
+- Preserve the current Express-to-Workers integration.
+- Access environment bindings and secrets through the established runtime integration.
+- Do not assume persistent process state, unrestricted filesystem access, or unrestricted Node.js API support.
+- Ensure models and services use database drivers and external clients supported by the deployed runtime.
+
+### Testing Strategy
+
+Test each layer independently where practical.
+
+- **Models:** Test data access, queries, and persistence behavior.
+- **Services:** Test business rules and interactions with mocked dependencies.
+- **Controllers:** Test HTTP status codes, response bodies, and error forwarding.
+- **Routes:** Test endpoint registration, middleware, authentication, and request validation.
+- **Integration:** Test the complete request flow using the project's Workers-compatible test environment.
+
+### Rules for AI Coding Agents
+
+When implementing a feature:
+
+1. Define or update the model and data-access operations when persistence is involved.
+2. Implement business rules in the service layer.
+3. Add or update the controller to coordinate the use case and construct the HTTP response.
+4. Register the endpoint in the appropriate route file.
+5. Add validation and security middleware as needed.
+6. Add tests for the affected layers.
+7. Update API documentation when endpoint behavior changes.
+
+Do not introduce additional architectural layers unless they solve a concrete problem. Keep the MVC separation clear without adding unnecessary abstractions.
 
 ## Runtime and Cloudflare Workers
 
