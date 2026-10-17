@@ -4,7 +4,9 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-10-15",
 	"compatibility_flags": ["nodejs_compat"],
-	"observability": { "enabled": true },
+	"observability": {
+		"enabled": true
+	},
 	"routes": [
 		{
 			"pattern": "api.luna-stellaria.com",
@@ -17,5 +19,17 @@
 			"database_name": "lunadb",
 			"database_id": "6ab032f8-eb09-4e05-a37b-3d741ec144df"
 		}
-	]
+	],
+	"workers_dev": true,
+	"preview_urls": true,
+
+	"vars": {
+		"ENVIRONMENT": "production"
+	},
+
+	"previews": {
+		"vars": {
+			"ENVIRONMENT": "preview"
+		}
+	}
 }

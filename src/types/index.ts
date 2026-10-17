@@ -37,6 +37,8 @@ export interface HealthStatus {
 export interface AuthUser {
 	id: number;
 	email: string;
+	/** Public account name; changes are optional and unique across accounts. */
+	display_name: string;
 }
 
 /** Persisted user row, including the password hash used only server-side. */
