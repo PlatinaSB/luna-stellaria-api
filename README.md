@@ -28,14 +28,16 @@ that calls this API directly with credentialed CORS.
 
 ### Request bodies
 
-- `POST /auth/register` — `{ "email": string, "password": string, "confirm_password": string, "name"?: string }`
+- `POST /auth/register` — `{ "email": string, "password": string, "confirm_password": string, "turnstile_token": string, "name"?: string }`
   (`name` is optional; when omitted a random pseudo name is generated. Users without one keep
   their email address as their account name.)
-- `POST /auth/login` — `{ "email": string, "password": string }`
+- `POST /auth/login` — `{ "email": string, "password": string, "turnstile_token": string }`
+  (`turnstile_token` comes from the Cloudflare Turnstile widget and is verified server-side; without
+  a valid token both endpoints fail with `400 TURNSTILE_FAILED`.)
 - `POST /auth/account/name` — `{ "name": string }` (2–40 characters, unique)
 - `POST /auth/account/email` — `{ "email": string, "current_password": string }` (reissues the session)
 - `POST /auth/account/password` — `{ "current_password": string, "password": string, "confirm_password": string }`
-- `POST /ai/indobert/classify` — `{ "text": string }`
+- `POST /ai/indobert/classify` — `{ "text": string, "turnstile_token": string }`
 
 ### Response envelope
 
@@ -50,8 +52,9 @@ Every response uses one of two shapes:
 ```
 
 Error `code` values include `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `NAME_TAKEN`,
-`UNAUTHORIZED`, `UPSTREAM_ERROR`, `INVALID_JSON`, `INTERNAL_ERROR`, and `NOT_FOUND`. Unexpected
-errors return `500` with an `INTERNAL_ERROR` envelope and are logged, never leaked to the client.
+`UNAUTHORIZED`, `TURNSTILE_FAILED`, `UPSTREAM_ERROR`, `INVALID_JSON`, `INTERNAL_ERROR`, and
+`NOT_FOUND`. Unexpected errors return `500` with an `INTERNAL_ERROR` envelope and are logged, never
+leaked to the client.
 
 ### Sessions
 
@@ -61,6 +64,17 @@ are hashed with `bcryptjs` at cost 12. JWTs are signed and verified with `jose`.
 
 Authenticated routes read the `jwt` cookie via the auth middleware and resolve it to a user;
 `GET /auth/me` returns `401 UNAUTHORIZED` when the session is missing or invalid.
+
+### Turnstile
+
+`/auth/register`, `/auth/login`, and `/ai/indobert/classify` are protected by
+[Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/).
+The frontend renders the widget with the public site key and posts the solved token as
+`turnstile_token`; the API verifies it server-side with the `Turnstile_secret_key` secret against the
+siteverify endpoint (`src/services/turnstile.service.ts` via the `requireTurnstile` middleware).
+Missing or rejected tokens fail with `400 TURNSTILE_FAILED`; if Cloudflare siteverify is unreachable
+the request fails with `502 UPSTREAM_ERROR`. Tokens are single-use, so the frontend resets the widget
+after every failed submission.
 
 ### CORS
 
@@ -75,12 +89,12 @@ Credentialed CORS is handled in `src/middleware/cors.ts`. Allowed origins are
 src/
 ├── index.ts                 Cloudflare Workers entry point
 ├── app.ts                   Express application factory
-├── env.d.ts                 Typed Worker secrets (JWT_SECRET, hf_endpoints, hf_endpoints_key)
+├── env.d.ts                 Typed Worker secrets (JWT_SECRET, Turnstile_secret_key, hf_endpoints, hf_endpoints_key)
 ├── routes/                  Route registration + routers (health, auth, indobert)
 ├── controllers/             HTTP request/response handling
-├── services/                Business logic (auth, indobert)
+├── services/                Business logic (auth, indobert, turnstile)
 ├── models/                  D1 data access (user)
-├── middleware/              CORS, auth, error handler, not-found, request logger
+├── middleware/              CORS, auth, turnstile, error handler, not-found, request logger
 ├── utils/                   Cookie helpers
 └── types/                   Shared API types
 migrations/                  D1 SQL migrations (numbered)
@@ -108,13 +122,15 @@ Copy `.dev.vars.example` to `.dev.vars` (gitignored) and fill in the values:
 JWT_SECRET="replace-with-a-long-random-string"
 hf_endpoints="https://your-endpoint.huggingface.cloud"
 hf_endpoints_key="hf_replace_me"
+Turnstile_secret_key="replace-with-your-turnstile-secret-key"
 ```
 
-| Variable           | Purpose                                             |
-| ------------------ | --------------------------------------------------- |
-| `JWT_SECRET`       | Signs and verifies session JWTs                     |
-| `hf_endpoints`     | Hosted Hugging Face inference endpoint for IndoBERT |
-| `hf_endpoints_key` | Hugging Face API token for that endpoint            |
+| Variable               | Purpose                                             |
+| ---------------------- | --------------------------------------------------- |
+| `JWT_SECRET`           | Signs and verifies session JWTs                     |
+| `hf_endpoints`         | Hosted Hugging Face inference endpoint for IndoBERT |
+| `hf_endpoints_key`     | Hugging Face API token for that endpoint            |
+| `Turnstile_secret_key` | Server key for verifying Turnstile form tokens      |
 
 `.dev.vars` is only read by `wrangler dev`; `npm run gen`/`typecheck` do not need it.
 
@@ -168,6 +184,7 @@ Set the secrets in production (they are never committed):
 npx wrangler secret put JWT_SECRET
 npx wrangler secret put hf_endpoints
 npx wrangler secret put hf_endpoints_key
+npx wrangler secret put Turnstile_secret_key
 ```
 
 Run the production migrations with `npx wrangler d1 migrations apply lunadb --remote`.
