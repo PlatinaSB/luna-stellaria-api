@@ -14,19 +14,27 @@ that calls this API directly with credentialed CORS.
 
 ## Endpoints
 
-| Method | Path                    | Auth | Description                               |
-| ------ | ----------------------- | ---- | ----------------------------------------- |
-| `GET`  | `/health`               | –    | Liveness/health check                     |
-| `POST` | `/auth/register`        | –    | Create an account and start a session     |
-| `POST` | `/auth/login`           | –    | Sign in and start a session               |
-| `POST` | `/auth/logout`          | –    | Clear the session cookie                  |
-| `GET`  | `/auth/me`              | ✅   | Return the current user                   |
-| `POST` | `/ai/indobert/classify` | ✅   | Classify Indonesian text via Hugging Face |
+| Method | Path                     | Auth | Description                                 |
+| ------ | ------------------------ | ---- | ------------------------------------------- |
+| `GET`  | `/health`                | –    | Liveness/health check                       |
+| `POST` | `/auth/register`         | –    | Create an account and start a session       |
+| `POST` | `/auth/login`            | –    | Sign in and start a session                 |
+| `POST` | `/auth/logout`           | –    | Clear the session cookie                    |
+| `GET`  | `/auth/me`               | ✅   | Return the current user                     |
+| `POST` | `/auth/account/name`     | ✅   | Change the account display name             |
+| `POST` | `/auth/account/email`    | ✅   | Change email (requires current password)    |
+| `POST` | `/auth/account/password` | ✅   | Change password (requires current password) |
+| `POST` | `/ai/indobert/classify`  | ✅   | Classify Indonesian text via Hugging Face   |
 
 ### Request bodies
 
-- `POST /auth/register` — `{ "email": string, "password": string, "confirm_password": string }`
+- `POST /auth/register` — `{ "email": string, "password": string, "confirm_password": string, "name"?: string }`
+  (`name` is optional; when omitted a random pseudo name is generated. Users without one keep
+  their email address as their account name.)
 - `POST /auth/login` — `{ "email": string, "password": string }`
+- `POST /auth/account/name` — `{ "name": string }` (2–40 characters, unique)
+- `POST /auth/account/email` — `{ "email": string, "current_password": string }` (reissues the session)
+- `POST /auth/account/password` — `{ "current_password": string, "password": string, "confirm_password": string }`
 - `POST /ai/indobert/classify` — `{ "text": string }`
 
 ### Response envelope
@@ -41,9 +49,9 @@ Every response uses one of two shapes:
 { "success": false, "error": { "code": "VALIDATION_ERROR", "message": "Text cannot be empty." } }
 ```
 
-Error `code` values include `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `UNAUTHORIZED`,
-`UPSTREAM_ERROR`, `INVALID_JSON`, `INTERNAL_ERROR`, and `NOT_FOUND`. Unexpected errors return `500`
-with an `INTERNAL_ERROR` envelope and are logged, never leaked to the client.
+Error `code` values include `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `NAME_TAKEN`,
+`UNAUTHORIZED`, `UPSTREAM_ERROR`, `INVALID_JSON`, `INTERNAL_ERROR`, and `NOT_FOUND`. Unexpected
+errors return `500` with an `INTERNAL_ERROR` envelope and are logged, never leaked to the client.
 
 ### Sessions
 
@@ -119,8 +127,9 @@ npx wrangler d1 migrations apply lunadb --local    # local dev
 npx wrangler d1 migrations apply lunadb --remote   # production
 ```
 
-Never edit an applied migration — add a new numbered file (`0002_...`) instead. The `users` table
-(`0001_create-auth.sql`) holds `id`, `email` (unique), `password_hash`, and `created_at`.
+Never edit an applied migration — add a new numbered file (`0003_...`) instead. The `users` table
+(`0001_create-auth.sql`, extended by `0002_add-display-name.sql`) holds `id`, `email` (unique),
+`display_name` (unique account name), `password_hash`, and `created_at`.
 
 ### Run Locally
 
