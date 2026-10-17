@@ -9,11 +9,12 @@ import {
 	renameAccount
 } from '../controllers/auth.controller.ts';
 import { requireAuth } from '../middleware/auth.ts';
+import { requireTurnstile } from '../middleware/turnstile.ts';
 
 export const authRouter = Router();
 
-authRouter.post('/auth/register', register);
-authRouter.post('/auth/login', login);
+authRouter.post('/auth/register', requireTurnstile, register);
+authRouter.post('/auth/login', requireTurnstile, login);
 authRouter.post('/auth/logout', logout);
 authRouter.get('/auth/me', me);
 

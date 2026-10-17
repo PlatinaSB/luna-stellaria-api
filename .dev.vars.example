@@ -2,3 +2,4 @@
 JWT_SECRET="replace-with-a-long-random-string"
 hf_endpoints="https://your-endpoint.huggingface.cloud"
 hf_endpoints_key="hf_replace_me"
+Turnstile_secret_key="put Turnstile secret key here"

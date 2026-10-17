@@ -12,5 +12,6 @@ declare namespace Cloudflare {
 		JWT_SECRET: string;
 		hf_endpoints: string;
 		hf_endpoints_key: string;
+		Turnstile_secret_key: string;
 	}
 }
