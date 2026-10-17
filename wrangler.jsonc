@@ -17,5 +17,7 @@
 			"database_name": "lunadb",
 			"database_id": "6ab032f8-eb09-4e05-a37b-3d741ec144df"
 		}
-	]
+	],
+	"workers_dev": true,
+	"preview_urls": true
 }
