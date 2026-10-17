@@ -1,0 +1,10 @@
+-- Migration number: 0001 	 2026-09-11T05:19:57.843Z
+CREATE TABLE users (
+	id INTEGER PRIMARY KEY AUTOINCREMENT,
+	email TEXT NOT NULL UNIQUE,
+	password_hash TEXT NOT NULL,
+	created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_users_email
+	ON users(email);

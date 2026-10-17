@@ -1,7 +1,8 @@
 /**
  * Shared, cross-cutting types for the HTTP API.
  *
- * These describe the stable JSON response envelope returned by every endpoint.
+ * These describe the stable JSON response envelope returned by every endpoint
+ * plus the domain types shared between models, services, and controllers.
  */
 
 export interface ApiErrorBody {
@@ -30,4 +31,27 @@ export type ApiResponse<TData> = ApiSuccess<TData> | ApiFailure;
 export interface HealthStatus {
 	status: 'ok';
 	timestamp: string;
+}
+
+/** Authenticated user exposed to clients. Never includes credential material. */
+export interface AuthUser {
+	id: number;
+	email: string;
+}
+
+/** Persisted user row, including the password hash used only server-side. */
+export interface UserRecord extends AuthUser {
+	password_hash: string;
+}
+
+/** Result of a successful register or login. */
+export interface AuthResult {
+	user: AuthUser;
+	token: string;
+}
+
+/** A single label/score pair returned by text classification. */
+export interface Prediction {
+	score: number;
+	label: string;
 }
