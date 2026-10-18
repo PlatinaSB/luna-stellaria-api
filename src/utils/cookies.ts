@@ -6,8 +6,11 @@ const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
 const PRODUCTION_COOKIE_DOMAIN = '.luna-stellaria.com';
 
 /**
- * The session cookie is shared with the apex domain in production so the
- * frontend can present server-rendered auth state.
+ * The session cookie is shared with the apex domain so the frontend (and any
+ * deployed preview of it, e.g. `<branch>.preview.luna-stellaria.com`) can
+ * present server-rendered auth state. All deployed hosts sit inside the
+ * `luna-stellaria.com` zone, so domain scoping is safe whenever the request is
+ * HTTPS, and everything stays same-site (`sameSite: 'lax'`).
  *
  * Detection is based on the request being HTTPS rather than the hostname:
  * `wrangler dev` rewrites `Host`/`req.hostname` to the custom-domain route

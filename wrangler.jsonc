@@ -18,10 +18,21 @@
 			"persist": true
 		}
 	},
+	"workers_dev": true,
+	"preview_urls": false,
 	"routes": [
 		{
 			"pattern": "api.luna-stellaria.com",
 			"custom_domain": true
+		},
+		// Preview-only wildcard for versions previews: each `npx wrangler preview`
+		// deploys to `<preview-name>.preview-api.luna-stellaria.com` (the same
+		// preview name the frontend preview resolves to).
+		{
+			"pattern": "preview-api.luna-stellaria.com",
+			"custom_domain": true,
+			"previews_enabled": true,
+			"enabled": false
 		}
 	],
 	"d1_databases": [
@@ -31,16 +42,32 @@
 			"database_id": "6ab032f8-eb09-4e05-a37b-3d741ec144df"
 		}
 	],
-	"workers_dev": true,
-	"preview_urls": true,
 
 	"vars": {
 		"ENVIRONMENT": "production"
 	},
 
 	"previews": {
+		// Cloudflare Worker Previews (Wrangler 4.135+). `npx wrangler preview`
+		// creates an isolated preview per branch under the same Worker. Secrets
+		// never live here — seed the Previews Base configuration once with
+		// `npx wrangler preview base-config secret put JWT_SECRET` (and
+		// `hf_endpoints`, `hf_endpoints_key`); every new preview copies them.
 		"vars": {
 			"ENVIRONMENT": "preview"
-		}
+		},
+		// Isolated preview database, provisioned once:
+		//   npx wrangler d1 create lunadb-preview   (paste the returned ID below)
+		//   npx wrangler d1 execute lunadb-preview --remote --file migrations/0001_create-auth.sql
+		//   npx wrangler d1 execute lunadb-preview --remote --file migrations/0002_add-display-name.sql
+		// (`d1 migrations apply` only resolves databases in the top-level config,
+		// so apply each migration file in numeric order via `d1 execute`.)
+		"d1_databases": [
+			{
+				"binding": "lunadb",
+				"database_name": "lunadb-preview",
+				"database_id": "f0196890-7087-4af3-8793-ac72901058e2"
+			}
+		]
 	}
 }

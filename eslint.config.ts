@@ -7,6 +7,10 @@ import { defineConfig } from 'eslint/config';
 
 export default defineConfig([
 	{
+		// Generated/scratch content never needs linting.
+		ignores: ['**/.wrangler/**', 'package-lock.json', 'worker-configuration.d.ts', '.dev.vars*']
+	},
+	{
 		files: ['**/*.{js,mjs,cjs,ts,mts,cts}'],
 		plugins: { js },
 		extends: ['js/recommended'],

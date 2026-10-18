@@ -79,13 +79,15 @@ after every failed submission.
 ### CORS
 
 Credentialed CORS is handled in `src/middleware/cors.ts`. Allowed origins are
-`https://luna-stellaria.com` and `https://www.luna-stellaria.com`, plus any `http://localhost` /
-`http://127.0.0.1` origin for local development. The allowed origin is echoed back (never `*`) with
-`Access-Control-Allow-Credentials: true`. `OPTIONS` preflight requests return `204`.
+`https://luna-stellaria.com` and `https://www.luna-stellaria.com`, any other HTTPS host inside the
+`luna-stellaria.com` zone (including version previews like `<preview>.preview.luna-stellaria.com`),
+plus any `http://localhost` / `http://127.0.0.1` origin for local development. The allowed origin is
+echoed back (never `*`) with `Access-Control-Allow-Credentials: true`. `OPTIONS` preflight requests
+return `204`.
 
 ## Project Structure
 
-```
+```text
 src/
 ├── index.ts                 Cloudflare Workers entry point
 ├── app.ts                   Express application factory
@@ -118,7 +120,7 @@ npm install
 
 Copy `.dev.vars.example` to `.dev.vars` (gitignored) and fill in the values:
 
-```
+```text
 JWT_SECRET="replace-with-a-long-random-string"
 hf_endpoints="https://your-endpoint.huggingface.cloud"
 hf_endpoints_key="hf_replace_me"
@@ -133,6 +135,10 @@ Turnstile_secret_key="replace-with-your-turnstile-secret-key"
 | `Turnstile_secret_key` | Server key for verifying Turnstile form tokens      |
 
 `.dev.vars` is only read by `wrangler dev`; `npm run gen`/`typecheck` do not need it.
+
+Besides the secrets, `ENVIRONMENT` marks the deployment tier: `"development"` locally (from
+`.dev.vars`), `"production"` at top level in `wrangler.jsonc`, and `"preview"` in its `previews`
+block.
 
 ### Database
 
@@ -188,3 +194,34 @@ npx wrangler secret put Turnstile_secret_key
 ```
 
 Run the production migrations with `npx wrangler d1 migrations apply lunadb --remote`.
+
+### Environments
+
+| Environment | How it runs                                                                                          | Config                                               |
+| ----------- | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| Development | `npm run dev` (`wrangler dev`, `http://localhost:8787`)                                              | `.dev.vars` (template in `.dev.vars.example`)        |
+| Preview     | `npx wrangler preview` — isolated copy per branch at `<preview-name>.preview-api.luna-stellaria.com` | `previews` block in `wrangler.jsonc`                 |
+| Production  | `npm run deploy` → `https://api.luna-stellaria.com`                                                  | top-level `vars`, `d1_databases` in `wrangler.jsonc` |
+
+Preview setup (once, Wrangler 4.135+; `deploy` must have run at least once):
+
+```bash
+# Isolated preview database; paste the returned ID into the previews block:
+npx wrangler d1 create lunadb-preview
+
+# `d1 migrations apply` only resolves databases declared in the top-level
+# config, so apply each migration file in numeric order with `d1 execute`:
+npx wrangler d1 execute lunadb-preview --remote --file migrations/0001_create-auth.sql
+npx wrangler d1 execute lunadb-preview --remote --file migrations/0002_add-display-name.sql
+
+# Shared secrets for every new preview:
+npx wrangler preview base-config secret put JWT_SECRET
+npx wrangler preview base-config secret put hf_endpoints
+npx wrangler preview base-config secret put hf_endpoints_key
+npx wrangler preview base-config secret put Turnstile_secret_key
+# For Turnstile, the always-passing test key 1x0000000000000000000000000000000AA
+# is a safe default; use a real preview key if you want real checks.
+```
+
+Each preview keeps users out of the production database; previews of the frontend (`luna-stellaria`)
+resolve to the API preview of the same preview name automatically.
