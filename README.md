@@ -1,6 +1,6 @@
 # luna-stellaria-api
 
-Backend API for [Luna Stellaria](../luna-stellaria), hosted on **Cloudflare Workers** with **Express.js**.
+Backend API for [Luna Stellaria](../luna-stellaria), hosted on **Cloudflare Workers** with **Hono** (chanfana OpenAPI layer).
 
 The API owns everything server-side: accounts and sessions, the `lunadb` D1 database, and the hosted
 Hugging Face endpoint used by the Indonesian AI text classifier. The frontend is a separate project
@@ -8,7 +8,7 @@ that calls this API directly with credentialed CORS.
 
 - **Production domain:** `https://api.luna-stellaria.com`
 - **Runtime:** Cloudflare Workers (`nodejs_compat`)
-- **Framework:** Express 5
+- **Framework:** Hono 4 + chanfana (OpenAPI generated from zod schemas)
 - **Database:** Cloudflare D1 (`lunadb`)
 - **Language:** TypeScript
 
@@ -25,8 +25,13 @@ that calls this API directly with credentialed CORS.
 | `POST` | `/auth/account/email`    | ✅   | Change email (requires current password)    |
 | `POST` | `/auth/account/password` | ✅   | Change password (requires current password) |
 | `POST` | `/ai/indobert/classify`  | ✅   | Classify Indonesian text via Hugging Face   |
+| `GET`  | `/openapi.json`          | –    | Auto-generated OpenAPI spec                 |
+| `GET`  | `/docs`                  | –    | Browsable API docs (Swagger UI)             |
 
 ### Request bodies
+
+Request bodies are validated at runtime by the zod schemas in `src/routes/*.ts`; schema violations
+(including malformed JSON) return `400 VALIDATION_ERROR` with details under `error.details`.
 
 - `POST /auth/register` — `{ "email": string, "password": string, "confirm_password": string, "turnstile_token": string, "name"?: string }`
   (`name` is optional; when omitted a random pseudo name is generated. Users without one keep
@@ -52,9 +57,8 @@ Every response uses one of two shapes:
 ```
 
 Error `code` values include `VALIDATION_ERROR`, `INVALID_CREDENTIALS`, `EMAIL_TAKEN`, `NAME_TAKEN`,
-`UNAUTHORIZED`, `TURNSTILE_FAILED`, `UPSTREAM_ERROR`, `INVALID_JSON`, `INTERNAL_ERROR`, and
-`NOT_FOUND`. Unexpected errors return `500` with an `INTERNAL_ERROR` envelope and are logged, never
-leaked to the client.
+`UNAUTHORIZED`, `TURNSTILE_FAILED`, `UPSTREAM_ERROR`, `INTERNAL_ERROR`, and `NOT_FOUND`. Unexpected
+errors return `500` with an `INTERNAL_ERROR` envelope and are logged, never leaked to the client.
 
 ### Sessions
 
@@ -62,16 +66,20 @@ Sessions are a 7-day **HS256 JWT** stored in an httpOnly `jwt` cookie. In produc
 scoped to `.luna-stellaria.com` so the frontend and API share it; locally it is host-only. Passwords
 are hashed with `bcryptjs` at cost 12. JWTs are signed and verified with `jose`.
 
-Authenticated routes read the `jwt` cookie via the auth middleware and resolve it to a user;
-`GET /auth/me` returns `401 UNAUTHORIZED` when the session is missing or invalid.
+Authenticated endpoints resolve the `jwt` cookie via the `requireAuth` helper
+(`src/middleware/auth.ts`), which throws `401 UNAUTHORIZED` when the session is missing or invalid.
+Cookie scoping is decided by the request URL scheme, not the hostname: HTTPS requests get
+`Secure` + `Domain=.luna-stellaria.com`; plain-HTTP local development gets a host-only,
+non-secure cookie (`wrangler dev` rewrites `Host`, so it must never be branched on).
 
 ### Turnstile
 
 `/auth/register`, `/auth/login`, and `/ai/indobert/classify` are protected by
 [Cloudflare Turnstile](https://developers.cloudflare.com/turnstile/).
 The frontend renders the widget with the public site key and posts the solved token as
-`turnstile_token`; the API verifies it server-side with the `Turnstile_secret_key` secret against the
-siteverify endpoint (`src/services/turnstile.service.ts` via the `requireTurnstile` middleware).
+`turnstile_token`; the token is a validated zod body field checked inside the endpoint
+(`cf-connecting-ip` is forwarded as `remoteip`) with the `Turnstile_secret_key` secret against the
+siteverify endpoint (`src/services/turnstile.service.ts`).
 Missing or rejected tokens fail with `400 TURNSTILE_FAILED`; if Cloudflare siteverify is unreachable
 the request fails with `502 UPSTREAM_ERROR`. Tokens are single-use, so the frontend resets the widget
 after every failed submission.
@@ -89,19 +97,22 @@ return `204`.
 
 ```text
 src/
-├── index.ts                 Cloudflare Workers entry point
-├── app.ts                   Express application factory
+├── index.ts                 Cloudflare Workers entry point (export default Hono app)
+├── app.ts                   Hono app factory: middleware, onError/notFound, OpenAPI registry
 ├── env.d.ts                 Typed Worker secrets (JWT_SECRET, Turnstile_secret_key, hf_endpoints, hf_endpoints_key)
-├── routes/                  Route registration + routers (health, auth, indobert)
-├── controllers/             HTTP request/response handling
+├── routes/                  chanfana OpenAPIRoute endpoints (zod schemas) + fromHono registry
 ├── services/                Business logic (auth, indobert, turnstile)
 ├── models/                  D1 data access (user)
-├── middleware/              CORS, auth, turnstile, error handler, not-found, request logger
-├── utils/                   Cookie helpers
-└── types/                   Shared API types
+├── middleware/              Credentialed CORS, requireAuth helper, HttpError + envelope renderers
+├── utils/                   Session-cookie helpers (hono/cookie)
+└── types/                   Shared API types (envelope, AppEnv)
 migrations/                  D1 SQL migrations (numbered)
 wrangler.jsonc               Worker config (domain route, D1 binding)
 ```
+
+The OpenAPI spec (`/openapi.json`) and Swagger UI (`/docs`) are generated from the zod
+request/response schemas in `src/routes/*.ts`. Registering a new `OpenAPIRoute` endpoint in
+`src/routes/index.ts` automatically documents it.
 
 ## Getting Started
 
