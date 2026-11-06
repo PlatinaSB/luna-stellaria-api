@@ -57,3 +57,11 @@ export interface Prediction {
 	score: number;
 	label: string;
 }
+
+/**
+ * Hono environment generics for the application. Bindings mirror
+ * `worker-configuration.d.ts` (D1 `lunadb` plus Wrangler vars).
+ */
+export interface AppEnv {
+	Bindings: Env;
+}
