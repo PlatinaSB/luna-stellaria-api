@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { MiddlewareHandler } from 'hono';
 
 /**
  * Origins allowed to call the API with credentials.
@@ -41,22 +41,21 @@ function isAllowedOrigin(origin: string): boolean {
 }
 
 /** Credentialed CORS handling, including preflight requests. */
-export function cors(req: Request, res: Response, next: NextFunction): void {
-	const origin = req.headers.origin;
+export const cors: MiddlewareHandler = async (c, next) => {
+	const origin = c.req.header('origin');
 
 	if (origin && isAllowedOrigin(origin)) {
-		res.setHeader('Access-Control-Allow-Origin', origin);
-		res.setHeader('Access-Control-Allow-Credentials', 'true');
-		res.setHeader('Vary', 'Origin');
+		c.header('Access-Control-Allow-Origin', origin);
+		c.header('Access-Control-Allow-Credentials', 'true');
+		c.header('Vary', 'Origin');
 	}
 
-	if (req.method === 'OPTIONS') {
-		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-		res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-		res.setHeader('Access-Control-Max-Age', '86400');
-		res.status(204).end();
-		return;
+	if (c.req.method === 'OPTIONS') {
+		c.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+		c.header('Access-Control-Allow-Headers', 'Content-Type');
+		c.header('Access-Control-Max-Age', '86400');
+		return c.body(null, 204);
 	}
 
-	next();
-}
+	await next();
+};

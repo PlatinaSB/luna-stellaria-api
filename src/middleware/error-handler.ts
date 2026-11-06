@@ -1,4 +1,4 @@
-import type { NextFunction, Request, Response } from 'express';
+import { z } from 'zod';
 import type { ApiFailure } from '../types/index.ts';
 
 export interface HttpErrorOptions {
@@ -11,7 +11,7 @@ export interface HttpErrorOptions {
 }
 
 /**
- * Error type used by services and controllers to signal an expected
+ * Error type used by services and endpoints to signal an expected
  * client-facing failure with a specific status code.
  */
 export class HttpError extends Error {
@@ -28,62 +28,32 @@ export class HttpError extends Error {
 	}
 }
 
-/**
- * Centralized Express error handler.
- *
- * Known `HttpError`s are translated into the shared failure envelope. Anything
- * else is treated as an unexpected server error and its details are logged
- * rather than returned to the client.
- */
-export function errorHandler(
-	error: unknown,
-	req: Request,
-	res: Response,
-	next: NextFunction
-): void {
-	// Delegate to the default handler once the response has started streaming.
-	if (res.headersSent) {
-		next(error);
-		return;
-	}
-
-	if (error instanceof HttpError) {
-		const body: ApiFailure = {
-			success: false,
-			error: {
-				code: error.code,
-				message: error.message,
-				...(error.details === undefined ? {} : { details: error.details })
-			}
-		};
-
-		res.status(error.status).json(body);
-		return;
-	}
-
-	// `express.json()` rejects malformed bodies with a tagged SyntaxError.
-	if (error instanceof SyntaxError && (error as { type?: string }).type === 'entity.parse.failed') {
-		const body: ApiFailure = {
-			success: false,
-			error: {
-				code: 'INVALID_JSON',
-				message: 'Request body must be valid JSON.'
-			}
-		};
-
-		res.status(400).json(body);
-		return;
-	}
-
-	console.error(`[error] ${req.method} ${req.originalUrl}`, error);
-
-	const body: ApiFailure = {
+/** Renders an expected failure into the shared failure envelope. */
+export function toApiFailure(error: HttpError): ApiFailure {
+	return {
 		success: false,
 		error: {
-			code: 'INTERNAL_ERROR',
-			message: 'An unexpected error occurred.'
+			code: error.code,
+			message: error.message,
+			...(error.details === undefined ? {} : { details: error.details })
 		}
 	};
+}
 
-	res.status(500).json(body);
+/** OpenAPI schema shared by every documented error response. */
+export const apiFailureSchema = z.object({
+	success: z.literal(false),
+	error: z.object({
+		code: z.string(),
+		message: z.string(),
+		details: z.unknown().optional()
+	})
+});
+
+/** Builds an OpenAPI response entry for a documented failure. */
+export function apiErrorResponse(description: string) {
+	return {
+		description,
+		content: { 'application/json': { schema: apiFailureSchema } }
+	};
 }
