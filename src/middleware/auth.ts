@@ -1,29 +1,19 @@
-import type { NextFunction, Request, Response } from 'express';
+import type { Context } from 'hono';
 import { HttpError } from './error-handler.ts';
 import { verifySession } from '../services/auth.service.ts';
-import { readCookie, SESSION_COOKIE_NAME } from '../utils/cookies.ts';
+import { readSessionCookie } from '../utils/cookies.ts';
 import type { AuthUser } from '../types/index.ts';
 
 /**
- * Rejects unauthenticated requests and attaches the resolved user to
- * `res.locals.user` for downstream handlers.
+ * Resolves the session cookie to an authenticated user, or rejects the
+ * request. Handlers consume the return value directly.
  */
-export async function requireAuth(req: Request, res: Response, next: NextFunction): Promise<void> {
-	try {
-		const user = await verifySession(readCookie(req, SESSION_COOKIE_NAME));
+export async function requireAuth(c: Context): Promise<AuthUser> {
+	const user = await verifySession(readSessionCookie(c));
 
-		if (!user) {
-			throw new HttpError('Authentication required.', { status: 401, code: 'UNAUTHORIZED' });
-		}
-
-		res.locals.user = user;
-		next();
-	} catch (error) {
-		next(error);
+	if (!user) {
+		throw new HttpError('Authentication required.', { status: 401, code: 'UNAUTHORIZED' });
 	}
-}
 
-/** Reads the user attached by `requireAuth`. */
-export function getAuthUser(res: Response): AuthUser {
-	return res.locals.user as AuthUser;
+	return user;
 }

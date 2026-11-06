@@ -17,7 +17,6 @@
 		"@eslint/js": "^10.0.1",
 		"@eslint/json": "^2.1.1",
 		"@eslint/markdown": "^8.0.3",
-		"@types/express": "^5.0.6",
 		"@types/node": "^26.6.5",
 		"eslint": "^10.13.0",
 		"globals": "^17.13.0",
@@ -29,11 +28,17 @@
 	},
 	"dependencies": {
 		"bcryptjs": "^3.0.3",
-		"express": "^5.3.0",
-		"jose": "^6.2.12"
+		"chanfana": "^3.4.2",
+		"hono": "^4.13.16",
+		"jose": "^6.2.12",
+		"zod": "^4.6.7"
 	},
 	"allowScripts": {
 		"esbuild@0.28.2": true,
-		"workerd@1.20261012.1": true
+		"workerd@1.20261104.1": true
+	},
+	"overrides": {
+		"katex": "^0.18.2",
+		"minimatch": "^11.0.1"
 	}
 }

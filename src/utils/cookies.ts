@@ -1,8 +1,9 @@
-import type { CookieOptions, Request, Response } from 'express';
+import { getCookie, setCookie } from 'hono/cookie';
+import type { Context } from 'hono';
 
 export const SESSION_COOKIE_NAME = 'jwt';
 
-const SESSION_MAX_AGE_MS = 1000 * 60 * 60 * 24 * 7;
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 const PRODUCTION_COOKIE_DOMAIN = '.luna-stellaria.com';
 
 /**
@@ -10,60 +11,50 @@ const PRODUCTION_COOKIE_DOMAIN = '.luna-stellaria.com';
  * deployed preview of it, e.g. `<branch>.preview.luna-stellaria.com`) can
  * present server-rendered auth state. All deployed hosts sit inside the
  * `luna-stellaria.com` zone, so domain scoping is safe whenever the request is
- * HTTPS, and everything stays same-site (`sameSite: 'lax'`).
+ * HTTPS, and everything stays same-site (`sameSite: 'Lax'`).
  *
  * Detection is based on the request being HTTPS rather than the hostname:
- * `wrangler dev` rewrites `Host`/`req.hostname` to the custom-domain route
+ * `wrangler dev` rewrites `Host` to the custom-domain route
  * (`api.luna-stellaria.com`) even for `localhost`, so the host is useless as a
- * dev signal. Cloudflare terminates TLS in production, so `req.secure` is true
- * there and false under plain-HTTP local development, where a host-only cookie
- * is required (a `.luna-stellaria.com` cookie is rejected by a `localhost`
- * browser).
+ * dev signal. Cloudflare terminates TLS in production, so the URL scheme is
+ * `https:` there and `http:` under plain-HTTP local development, where a
+ * host-only cookie is required (a `.luna-stellaria.com` cookie is rejected by
+ * a `localhost` browser).
  */
-function baseCookieOptions(req: Request): CookieOptions {
-	const options: CookieOptions = {
-		httpOnly: true,
-		path: '/',
-		sameSite: 'lax',
-		secure: req.secure
-	};
-
-	if (req.secure) {
-		options.domain = PRODUCTION_COOKIE_DOMAIN;
-	}
-
-	return options;
+interface SessionCookieOptions {
+	httpOnly: true;
+	path: '/';
+	sameSite: 'Lax';
+	secure: boolean;
+	domain?: string;
 }
 
-/** Reads a single cookie value from the request `Cookie` header. */
-export function readCookie(req: Request, name: string): string | undefined {
-	const header = req.headers.cookie;
+function baseCookieOptions(c: Context): SessionCookieOptions {
+	const secure = new URL(c.req.url).protocol === 'https:';
 
-	if (!header) {
-		return undefined;
-	}
+	return {
+		httpOnly: true,
+		path: '/',
+		sameSite: 'Lax',
+		secure,
+		...(secure ? { domain: PRODUCTION_COOKIE_DOMAIN } : {})
+	};
+}
 
-	for (const part of header.split(';')) {
-		const separator = part.indexOf('=');
-
-		if (separator === -1) {
-			continue;
-		}
-
-		if (part.slice(0, separator).trim() === name) {
-			return decodeURIComponent(part.slice(separator + 1).trim());
-		}
-	}
-
-	return undefined;
+/** Reads the session cookie holding the signed JWT. */
+export function readSessionCookie(c: Context): string | undefined {
+	return getCookie(c, SESSION_COOKIE_NAME);
 }
 
 /** Sets the session cookie holding the signed JWT. */
-export function setSessionCookie(req: Request, res: Response, token: string): void {
-	res.cookie(SESSION_COOKIE_NAME, token, { ...baseCookieOptions(req), maxAge: SESSION_MAX_AGE_MS });
+export function setSessionCookie(c: Context, token: string): void {
+	setCookie(c, SESSION_COOKIE_NAME, token, {
+		...baseCookieOptions(c),
+		maxAge: SESSION_MAX_AGE_SECONDS
+	});
 }
 
 /** Clears the session cookie. */
-export function clearSessionCookie(req: Request, res: Response): void {
-	res.clearCookie(SESSION_COOKIE_NAME, baseCookieOptions(req));
+export function clearSessionCookie(c: Context): void {
+	setCookie(c, SESSION_COOKIE_NAME, '', { ...baseCookieOptions(c), maxAge: 0 });
 }
