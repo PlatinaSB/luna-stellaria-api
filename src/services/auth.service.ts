@@ -1,4 +1,5 @@
 import { env } from 'cloudflare:workers';
+import argon2 from 'argon2';
 import bcrypt from 'bcryptjs';
 import { SignJWT, jwtVerify } from 'jose';
 import { HttpError } from '../middleware/error-handler.ts';
@@ -15,7 +16,6 @@ import type { AuthResult, AuthUser, UserRecord } from '../types/index.ts';
 
 const JWT_ALGORITHM = 'HS256';
 const SESSION_DURATION = '7d';
-const BCRYPT_COST = 12;
 const MIN_PASSWORD_LENGTH = 8;
 const MIN_DISPLAY_NAME_LENGTH = 2;
 const MAX_DISPLAY_NAME_LENGTH = 40;
@@ -123,22 +123,67 @@ export async function registerUser(input: {
 
 	const displayName = requestedName || (await generateDisplayName());
 
-	const passwordHash = await bcrypt.hash(password, BCRYPT_COST);
+	const passwordHash = await argon2.hash(password);
 	const user = await createUser(email, passwordHash, displayName);
 	const token = await createSessionToken(user);
 
 	return { user, token };
 }
 
+/**
+ * Checks whether a password matches a stored hash.
+ * - argon2 hashes start with $argon2id$ or $argon2i$
+ * - bcrypt hashes start with $2a$, $2b$, or $2y$
+ * On successful bcrypt verification, the hash is automatically rehashed to argon2
+ * (transparent lazy migration of existing users). The rehash happens inside
+ * loginUser/changeEmail/changePassword after the verification check passes,
+ * to avoid double-hashing on concurrent requests.
+ */
+async function verifyPassword(password: string, storedHash: string): Promise<boolean> {
+	// argon2 hashes start with $argon2id$ or $argon2i$
+	if (storedHash.startsWith('$argon2id$') || storedHash.startsWith('$argon2i$')) {
+		return argon2.verify(storedHash, password);
+	}
+
+	// bcrypt hashes start with $2a$, $2b$, or $2y$
+	if (storedHash.startsWith('$2a$') || storedHash.startsWith('$2b$') || storedHash.startsWith('$2y$')) {
+		const match = await bcrypt.compare(password, storedHash);
+		if (match) {
+			// Marker: caller (loginUser/changeEmail/changePassword) will rehash
+			// to argon2 after this returns true.
+			return true;
+		}
+		return false;
+	}
+
+	// Unknown hash format — reject
+	return false;
+}
+
 /** Verifies credentials and returns a signed session. */
 export async function loginUser(input: { email: string; password: string }): Promise<AuthResult> {
 	const user = await findUserByEmail(input.email);
 
-	if (!user || !(await bcrypt.compare(input.password, user.password_hash))) {
+	if (!user) {
 		throw new HttpError('Invalid email or password.', {
 			status: 401,
 			code: 'INVALID_CREDENTIALS'
 		});
+	}
+
+	const passwordValid = await verifyPassword(input.password, user.password_hash);
+
+	if (!passwordValid) {
+		throw new HttpError('Invalid email or password.', {
+			status: 401,
+			code: 'INVALID_CREDENTIALS'
+		});
+	}
+
+	// Transparently rehash bcrypt hashes to argon2 after successful verification
+	if (user.password_hash.startsWith('$2a$') || user.password_hash.startsWith('$2b$') || user.password_hash.startsWith('$2y$')) {
+		const newHash = await argon2.hash(input.password);
+		await updateUserPassword(user.id, newHash);
 	}
 
 	const identity = toAuthUser(user);
@@ -217,11 +262,19 @@ export async function changeEmail(input: {
 		throw new HttpError('Account not found.', { status: 404, code: 'NOT_FOUND' });
 	}
 
-	if (!(await bcrypt.compare(input.currentPassword, record.password_hash))) {
+	const passwordValid = await verifyPassword(input.currentPassword, record.password_hash);
+
+	if (!passwordValid) {
 		throw new HttpError('Current password is incorrect.', {
 			status: 401,
 			code: 'INVALID_CREDENTIALS'
 		});
+	}
+
+	// Transparently rehash bcrypt hashes to argon2 after successful verification
+	if (record.password_hash.startsWith('$2a$') || record.password_hash.startsWith('$2b$') || record.password_hash.startsWith('$2y$')) {
+		const newHash = await argon2.hash(input.currentPassword);
+		await updateUserPassword(record.id, newHash);
 	}
 
 	const email = input.email;
@@ -253,7 +306,9 @@ export async function changePassword(input: {
 		throw new HttpError('Account not found.', { status: 404, code: 'NOT_FOUND' });
 	}
 
-	if (!(await bcrypt.compare(input.currentPassword, record.password_hash))) {
+	const passwordValid = await verifyPassword(input.currentPassword, record.password_hash);
+
+	if (!passwordValid) {
 		throw new HttpError('Current password is incorrect.', {
 			status: 401,
 			code: 'INVALID_CREDENTIALS'
@@ -274,6 +329,6 @@ export async function changePassword(input: {
 		});
 	}
 
-	const passwordHash = await bcrypt.hash(input.password, BCRYPT_COST);
+	const passwordHash = await argon2.hash(input.password);
 	await updateUserPassword(input.userId, passwordHash);
 }

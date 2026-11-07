@@ -64,7 +64,7 @@ errors return `500` with an `INTERNAL_ERROR` envelope and are logged, never leak
 
 Sessions are a 7-day **HS256 JWT** stored in an httpOnly `jwt` cookie. In production the cookie is
 scoped to `.luna-stellaria.com` so the frontend and API share it; locally it is host-only. Passwords
-are hashed with `bcryptjs` at cost 12. JWTs are signed and verified with `jose`.
+are hashed with `argon2` (default hardness). New accounts receive argon2 hashes immediately; existing bcrypt hashes are transparently rehashed to argon2 on next successful authentication (lazy migration, no password reset required). JWTs are signed and verified with `jose`.
 
 Authenticated endpoints resolve the `jwt` cookie via the `requireAuth` helper
 (`src/middleware/auth.ts`), which throws `401 UNAUTHORIZED` when the session is missing or invalid.
